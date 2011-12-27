@@ -1,0 +1,84 @@
+html {
+  background-color: #0069BD;
+}
+
+body {
+  width: 90%;
+  margin: 0 auto;
+  font-family: Tahoma, Arial, sans-serif;
+  color: black;
+}
+
+h1 {
+  margin-top: 0px;
+  background: url('images/header.png') no-repeat left top;
+  color: white;
+  padding-top: 135px;
+  font-size: 16px;
+  white-space:nowrap;
+  font-family: monospace;
+}
+
+h2 {
+  color: white;
+  background-color: #525D76;
+  font-size: 16px;
+}
+
+h3 {
+  color: white;
+  font-size: 14px;
+  text-align: right;
+}
+
+h3 a {
+  color: #fff;
+}
+
+b {
+  color: white;
+  background-color: #525D76;
+}
+
+p {
+  background: white;
+  color: black;
+  font-size: 12px;
+}
+
+a {
+  color : black;
+}
+
+a.name {
+  color : black;
+}
+
+hr {
+  display: none;
+}
+
+table {
+  background-color: #ffffff;
+  border: 1px solid #000;
+  border-collapse:collapse;
+}
+
+tr:first-child
+{
+  background: #ffffff url('images/stripebar.png') repeat-x left top;
+  height: 45px;
+  vertical-align: top;
+} 
+	
+th {
+  color: #ffffff;
+}
+
+td {
+  padding: 3px 10px 3px 2px;
+}
+
+td img {
+  vertical-align: middle;
+}
