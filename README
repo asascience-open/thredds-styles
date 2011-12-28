@@ -1,0 +1,12 @@
+Installation:
+
+Assumes the CATALINA_HOME environmental variable is set to the home of your TOMCAT install
+
+[user@server thredds-styles]$ git clone git://github.com/asascience-open/thredds-styles.git
+[user@server thredds-styles]$ cd thredds-styles
+[user@server thredds-styles]$ cp -r images folder.gif tds.css tdsCat.css $CATALINA_HOME/webapps/thredds/
+
+
+Development:
+
+The meta.html and tree.html files provide static HTML for typical THREDDS webpages.  Use these as templates when changing the CSS and images.
