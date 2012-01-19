@@ -1,0 +1,2479 @@
+
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.0 Transitional//EN"
+"http://www.w3.org/TR/REC-html40/loose.dtd">
+<html><head><title>OPeNDAP Dataset Query Form</title>
+<link rel='stylesheet' href='tdsDap.css' type='text/css' >
+<base href="http://www.opendap.org/online_help_files/">
+<script type="text/javascript">
+<!--
+
+
+// -*- Java -*-
+
+// $Id: jscriptCore.java 15901 2007-02-28 23:57:28Z jimg $
+
+// (c) COPYRIGHT URI/MIT 1999
+// Please read the full copyright statement in the file COPYRIGHT.
+//
+// Authors:
+//	jhrg,jimg	James Gallagher (jgallagher@gso.uri.edu)
+
+var reflection_cgi = "http://unidata.ucar.edu/cgi-bin/dods/posturl.pl";
+
+// Event handlers for the disposition button.
+
+// The ascii_button handler sends data to a new window. The user can then 
+// save the data to a file.
+
+function ascii_button() {
+    var url = new String(document.forms[0].url.value);
+
+    var url_parts = url.split("?");
+    /* handle case where constraint is null. */
+    if (url_parts[1] != null) {
+        var ascii_url = url_parts[0] + ".ascii?" + url_parts[1];
+    }
+    else {
+        var ascii_url = url_parts[0] + ".ascii?";
+    }
+
+    window.open(ascii_url, "ASCII_Data");
+}
+
+/* The binary_button handler loads the data to the current window. Since it 
+   is binary, Netscape will ask the user for a filename and save the data
+   to that file. */
+
+function binary_button() {
+    var url = new String(document.forms[0].url.value);
+
+    var url_parts = url.split("?");
+    /* handle case where constraint is null. */
+    if (url_parts[1] != null) {
+        var binary_url = url_parts[0] + ".dods?" + url_parts[1];
+    }
+    else {
+        var binary_url = url_parts[0] + ".dods?";
+    }
+
+    window.location = binary_url;
+}
+
+/* Route the URL to Matlab, IDL, .... Users must add an entry into their mime
+   types file (aka list of Netscape helper applications) so that the URL will
+   be fedd into Matlab which must, in addition, be running loadopendap.
+
+   Note that reflection_cgi is a global JavaScript variable set at the 
+   begining of this `file'. */
+
+function program_button() {
+    var program_url = new String(document.forms[0].url.value);
+
+    /* Build a call to the reflector CGI. */
+    var CGI = reflection_cgi + "?" + "url=" + program_url + "&disposition=matlab";
+
+    window.location = CGI;
+}
+
+var help = 0;			// Our friend, the help window.
+
+function help_button() {
+    // Check the global to keep from opening the window again if it is
+    // already visible. I think Netscape handles this but I know it will
+    // write the contents over and over again. This preents that, too.
+    // 10/8/99 jhrg
+    if (help && !help.closed)
+	return;
+
+    // Resize on Netscape 4 is hosed. When enabled, if a user resizes then
+    // the root window's document gets reloaded. This does not happen on IE5.
+    // regardless, with scrollbars we don't absolutely need to be able to
+    // resize. 10/8/99 jhrg
+    help = window.open("", "help", "scrollbars,dependent,width=600,height=400");
+    write_help_contents(help);
+}
+
+function write_help_contents() {
+    help.document.writeln("<html><head><title> " +
+"Help for the DODS Dataset Access Form</title></head><body><form> " +
+"<center><h2>Help for the DODS Dataset Access Form</h2></center> " +
+"This form displays information from the dataset whose URL is shown in " +
+"the <em>DataURL</em> field. Each variable in this dataset is shown " +
+"below in the section labeled <em>Variables</em>. " +
+"<ul>" +
+"<li>To select a variable click on the checkbox to its left. " +
+"<li>To constrain a variable that you've selected, edit the information " +
+"that appears in the text boxes below the variable. " +
+"<li>To get ASCII or binary values for the variables you've selected, " +
+"click on the <em>Get ASCII</em> or <em>Get Binary</em> buttons. " +
+//  "<li>To use the <em>Send to Program</em> feature you must install a web " +
+//  "helper application that can route the DODS URL built by this form to a " +
+//  "client. Look on the <a " +
+//  "href=\"http://unidata.ucar.edu/packages/dods/\" target=\"DODS\"> " +
+//  "DODS home page (http://unidata.ucar.edu/packages/dods/)</a> " +
+//  "for a suitable client. " +
+//  "</ul>" +
+"Note that the URL displayed in the <em>DataURL</em> field is updated " +
+"as you select and/or constrain variables. The URL in this field can be " +
+"cut and pasted in various DODS clients such as the Matlab and IDL " +
+"command extensions. See the <a " +
+"href=\"http://unidata.ucar.edu/packages/dods/\" target=\"DODS\"> " +
+"DODS home page</a> for " +
+"information about those clients. " +
+"<p><hr><p> " + 
+"<center> " +
+"<input type=\"button\" value=\"Close\" onclick=\"self.close()\"> " +
+"</center></form></body></html>");
+}
+
+function open_dods_home() {
+    window.open("http://unidata.ucar.edu/packages/dods/", "DODS_HOME_PAGE");
+}
+
+
+// Helper functions for the form.
+
+function describe_index() {
+   defaultStatus = "Enter start, stride and stop for the array dimension.";
+}
+
+function describe_selection() {
+   defaultStatus = "Enter a relational expression (e.g., <20).";
+}
+
+function describe_operator() {
+   defaultStatus = "Choose a relational operator. Use - to enter a function name).";
+}
+
+function describe_projection() {
+   defaultStatus = "Add this variable to the projection.";
+}
+
+///////////////////////////////////////////////////////////
+// The dods_url object.
+///////////////////////////////////////////////////////////
+
+// CTOR for dods_url
+// Create the DODS URL object.
+function dods_url(base_url) {
+    this.url = base_url;
+    this.projection = "";
+    this.selection = "";
+    this.num_dods_vars = 0;
+    this.dods_vars = new Array();
+        
+    this.build_constraint = build_constraint;
+    this.add_dods_var = add_dods_var;
+    this.update_url = update_url;
+}
+
+// Method of dods_url
+// Add the projection and selection to the displayed URL.
+function update_url() {
+    this.build_constraint();
+    var url_text = this.url;
+    // Only add the projection & selection (and ?) if there really are
+    // constraints! 
+    if (this.projection.length + this.selection.length > 0)
+        url_text += "?" + this.projection + this.selection;
+    document.forms[0].url.value = url_text;
+}
+
+// Method of dods_url
+// Scan all the form elements and pick out the various pieces of constraint
+// information. Add these to the dods_url instance.
+function build_constraint() {
+    var p = "";
+    var s = "";
+    for (var i = 0; i < this.num_dods_vars; ++i) {
+        if (this.dods_vars[i].is_projected == 1) {
+	    // The comma is a clause separator.
+	    if (p.length > 0)
+	        p += ",";
+            p += this.dods_vars[i].get_projection();
+	}
+	var temp_s = this.dods_vars[i].get_selection();
+	if (temp_s.length > 0)
+	    s += "&" + temp_s;    // The ampersand is a prefix to the clause.
+    }
+
+    this.projection = p;
+    this.selection = s;
+}
+
+// Method of dods_url
+// Add the variable to the dods_var array of dods_vars. The var_index is the
+// number of *this particular* variable in the dataset, zero-based.
+function add_dods_var(dods_var) {
+    this.dods_vars[this.num_dods_vars] = dods_var;
+    this.num_dods_vars++;
+}
+
+/////////////////////////////////////////////////////////////////
+// dods_var
+/////////////////////////////////////////////////////////////////
+
+// CTOR for dods_var
+// name: the name of the variable from DODS' perspective.
+// js_var_name: the name of the variable within the form.
+// is_array: 1 if this is an array, 0 otherwise.
+function dods_var(name, js_var_name, is_array) {
+    // Common members
+    this.name = name;
+    this.js_var_name = js_var_name;
+    this.is_projected = 0;
+    if (is_array > 0) {
+        this.is_array = 1;
+        this.num_dims = 0;        // Holds the number of dimensions
+        this.dims = new Array(); // Holds the length of the dimensions
+
+        this.add_dim = add_dim;
+        this.display_indices = display_indices;
+        this.erase_indices = erase_indices;
+    }
+    else
+        this.is_array = 0;
+
+    this.handle_projection_change = handle_projection_change;
+    this.get_projection = get_projection;
+    this.get_selection = get_selection;
+}
+
+// Method of dods_var
+// Add a dimension to a DODS Array object.
+function add_dim(dim_size) {
+    this.dims[this.num_dims] = dim_size;
+    this.num_dims++;
+}
+
+// Method of dods_var
+// Add the array indices to the text widgets associated with this DODS
+// array object. The text widgets are names <var_name>_0, <var_name>_1, ...
+// <var_name>_n for an array with size N+1.
+function display_indices() {
+    for (var i = 0; i < this.num_dims; ++i) {
+        var end_index = this.dims[i]-1;
+        var s = "0:1:" + end_index.toString();
+	var text_widget = "document.forms[0]." + this.js_var_name + "_" + i.toString();
+	eval(text_widget).value = s;
+    }
+}
+
+// Method of dods_var
+// Use this to remove index information from a DODS array object.
+function erase_indices() {
+    for (var i = 0; i < this.num_dims; ++i) {
+	var text_widget = "document.forms[0]." + this.js_var_name + "_" + i.toString();
+	eval(text_widget).value = "";
+    }
+}
+
+// Method of  dods_var
+function handle_projection_change(check_box) {
+    if (check_box.checked) {
+        this.is_projected = 1;
+	if (this.is_array == 1)
+	    this.display_indices();
+    }
+    else {
+        this.is_projected = 0;
+	if (this.is_array == 1)
+	    this.erase_indices();
+    }
+
+    DODS_URL.update_url();
+}
+
+
+// Method of dods_var
+// Get the projection sub-expression for this variable.
+function get_projection() {
+    var p = "";
+    if (this.is_array == 1) {
+        p = this.name;		// ***
+        for (var i = 0; i < this.num_dims; ++i) {
+	    var text_widget = "document.forms[0]." + this.js_var_name + "_" + i.toString();
+	    p += "[" + eval(text_widget).value + "]";
+	}
+    }
+    else {
+	p = this.name;		// ***
+    }
+
+    return p;
+}
+
+// Method of dods_var
+// Get the selection (which is null for arrays).
+function get_selection() {
+    var s = "";
+    if (this.is_array == 1) {
+        return s;
+    }
+    else {
+	var text_widget = "document.forms[0]." + this.js_var_name + "_selection";
+        if (eval(text_widget).value != "") {
+            var oper_widget_name = "document.forms[0]." + this.js_var_name + "_operator";
+            var oper_widget = eval(oper_widget_name);
+	    var operator = oper_widget.options[oper_widget.selectedIndex].value;
+            // If the operator is `-' then don't prepend the variable name!
+            // This provides a way for users to enter function names as
+            // selection clauses. 
+            if (operator == "-")
+                s = eval(text_widget).value;
+            else
+	        s = this.name + operator + eval(text_widget).value; // ***
+        }
+    }
+
+    return s;
+}    
+
+// : jscriptCore.tmpl,v $
+// Revision 1.4  2001/09/17 23:05:53  ndp
+// *** empty log message ***
+//
+// Revision 1.1.2.3  2001/09/10 21:48:07  jimg
+// Removed the `Send to Program' button and its help text.
+//
+// Revision 1.1.2.2  2001/09/10 19:32:28  jimg
+// Fixed two problems: 1) Variable names in the JavaScript code sometimes
+// contained spaces since they were made using the dataset's variable name.
+// The names are now filtered through id2www and esc2underscore. 2) The CE
+// sometimes contained spaces, again, because dataset variable names were
+// used to build the CE. I filtered the names with id2www_ce before passing
+// them to the JavaScript code.
+//
+// Revision 1.1.2.1  2001/01/26 04:01:13  jimg
+// Added
+//
+// Revision 1.5  2000/11/09 21:04:37  jimg
+// Merged changes from release-3-1. There was a goof and a bunch of the
+// changes never made it to the branch. I merged the entire branch.
+// There maybe problems still...
+//
+// Revision 1.4  2000/10/03 20:07:21  jimg
+// Moved Logs to the end of each file.
+//
+// Revision 1.3  1999/05/18 20:08:18  jimg
+// Fixed massive problems introduced by the String to string changes.
+//
+// Revision 1.2  2000/11/09 21:04:37  jimg
+// Merged changes from release-3-1. There was a goof and a bunch of the
+// changes never made it to the branch. I merged the entire branch.
+// There maybe problems still...
+//
+// Revision 1.1.2.3  1999/10/13 17:02:55  jimg
+// Changed location of posturl.pl.
+//
+// Revision 1.1.2.2  1999/10/11 17:57:32  jimg
+// Fixed a bug which showed up in IE 5. Objects in IE 5 cannot use eval() to
+// name a field and access a property of that field in the same statement.
+// Instead, the use of eval to name a field and the access to that (new)
+// field must be broken up. I think this is the case because IE 5's parser
+// thinks `eval' is, in this situation, an object property. Of course,
+// there's no eval property per se, so script execution halts. See the use of
+// the document.forms[0].<text_widget> stuff in the method display_indices().
+//
+// Revision 1.1.2.1  1999/10/09 00:30:36  jimg
+// Created.
+
+DODS_URL = new dods_url("http://tds.maracoos.org/thredds/dodsC/MODIS-Agg.nc");
+// -->
+</script>
+</head>
+<body>
+<p><h2 align='center'>OPeNDAP Dataset Access Form</h2>
+<hr>
+<font size=-1>Tested on Netscape 4.61 and Internet Explorer 5.00.</font>
+<hr>
+<form action="">
+<table>
+
+<tr><td align="right">
+<h3><a href="opendap_form_help.html#disposition" valign="bottom">Action:</a></h3>
+<td><input type="button" value="Get ASCII" onclick="ascii_button()">
+<input type="button" value="Get Binary" onclick="binary_button()">
+<input type="button" value="Show Help" onclick="help_button()">
+<tr>
+<td align="right">
+<h3><a href="opendap_form_help.html#data_url" valign="bottom">Data URL:</a></h3><td><input name="url" type="text" size=70 value="http://tds.maracoos.org/thredds/dodsC/MODIS-Agg.nc">
+<tr><td><td><hr>
+
+<tr>
+<td align="right" valign="top">
+<h3><a href="opendap_form_help.html#global_attr">Global Attributes:</a></h3>
+<td><textarea name="global_attr" rows=5 cols=70>
+Conventions: CF-1.0
+creator_name: Matthew Oliver
+creator_email: moliver@udel.edu
+institution: University of Delaware Ocean Exploration, Remote Sensing and Biogeography Group (ORB)
+url: http://orb.ceoe.udel.edu/
+source: satellite observation NASA MODIS-Aqua instrument
+groundstation: University of Delaware, Newark, Center for Remote Sensing
+software: APS v4.2.5
+createAgency: Naval Research Laboratory, Stennis Space Center
+inputMET1: /home/aps/aps/data/common/met_climatology.hdf
+inputOZONE1: /home/aps/aps/data/common/ozone_climatology.hdf
+inputCalibrationFile: A2012018184457.L1A_LAC, MYD02_Reflective_LUTs.V6.1.7.3_OCh.hdf, MYD02_Emissive_LUTs.V6.1.7.3_OCh.hdf, MYD02_QA_LUTs.V6.1.7.3_OCh.hdf
+product_list: chl_oc3,a_412_qaa,a_443_qaa,a_469_qaa,a_488_qaa,a_531_qaa,a_547_qaa,a_555_qaa,a_645_qaa,a_667_qaa,a_678_qaa,a_748_qaa,a_869_qaa,bb_547_qaa,aph_443_qaa,adg_412_qaa,c_547_qaa,rrs_412,rrs_443,rrs_469,rrs_488,rrs_531,rrs_547,rrs_555,rrs_645,rrs_667,rrs_678,rrs_748,rrs_869,TSS_gould,PIM_gould,POM_gould,salinity,sst,red_ch,green_ch,blue_ch,M_WK,M_WK_G
+summary: MODIS Aqua ocean color and sst calculation by APS; Regridded to Mercator lon/lat projection. Processed at the University of Delaware
+history:  
+</textarea><p>
+
+<tr><td><td><hr>
+
+<tr>
+<td align="right" valign="top">
+<h3><a href="opendap_form_help.html#dataset_variables">Variables:</a></h3>
+<br><td>
+<script type="text/javascript">
+<!--
+dods_lon = new dods_var("lon", "dods_lon", 1);
+DODS_URL.add_dods_var(dods_lon);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_lon"
+onclick="dods_lon.handle_projection_change(get_dods_lon)">
+<font size="+1">lon</font>: Array of 64 bit Reals [lon = 0..4999]
+</b><br>
+
+lon:<input type="text" name="dods_lon_0" size=8 onfocus="describe_index()" onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_lon.add_dim(5000);
+// -->
+</script>
+<br>
+
+<textarea name="lon_attr" rows=5 cols=70>
+long_name: Longitude
+units: degrees_east
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_lat = new dods_var("lat", "dods_lat", 1);
+DODS_URL.add_dods_var(dods_lat);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_lat"
+onclick="dods_lat.handle_projection_change(get_dods_lat)">
+<font size="+1">lat</font>: Array of 64 bit Reals [lat = 0..4499]
+</b><br>
+
+lat:<input type="text" name="dods_lat_0" size=8 onfocus="describe_index()" onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_lat.add_dim(4500);
+// -->
+</script>
+<br>
+
+<textarea name="lat_attr" rows=5 cols=70>
+long_name: Latitude
+units: degrees_north
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_time = new dods_var("time", "dods_time", 1);
+DODS_URL.add_dods_var(dods_time);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_time"
+onclick="dods_time.handle_projection_change(get_dods_time)">
+<font size="+1">time</font>: Array of 32 bit Integers [time = 0..136]
+</b><br>
+
+time:<input type="text" name="dods_time_0" size=8 onfocus="describe_index()" onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_time.add_dim(137);
+// -->
+</script>
+<br>
+
+<textarea name="time_attr" rows=5 cols=70>
+units: seconds since 1970-01-01 00:00:00
+long_name: Time
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_chl_oc3 = new dods_var("chl_oc3", "dods_chl_oc3", 1);
+DODS_URL.add_dods_var(dods_chl_oc3);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_chl_oc3"
+onclick="dods_chl_oc3.handle_projection_change(get_dods_chl_oc3)">
+<font size="+1">chl_oc3</font>: Grid</b><br>
+
+time:<input type="text" name="dods_chl_oc3_0" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_chl_oc3.add_dim(1);
+// -->
+</script>
+lat:<input type="text" name="dods_chl_oc3_1" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_chl_oc3.add_dim(1);
+// -->
+</script>
+lon:<input type="text" name="dods_chl_oc3_2" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_chl_oc3.add_dim(1);
+// -->
+</script>
+<br>
+
+<textarea name="chl_oc3_attr" rows=5 cols=70>
+missing_value: -999.0
+units: mg m^-3
+_FillValue: -999.0
+long_name: Chlorophyll Concentration, OC3 Algorithm
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_a_412_qaa = new dods_var("a_412_qaa", "dods_a_412_qaa", 1);
+DODS_URL.add_dods_var(dods_a_412_qaa);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_a_412_qaa"
+onclick="dods_a_412_qaa.handle_projection_change(get_dods_a_412_qaa)">
+<font size="+1">a_412_qaa</font>: Grid</b><br>
+
+time:<input type="text" name="dods_a_412_qaa_0" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_a_412_qaa.add_dim(1);
+// -->
+</script>
+lat:<input type="text" name="dods_a_412_qaa_1" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_a_412_qaa.add_dim(1);
+// -->
+</script>
+lon:<input type="text" name="dods_a_412_qaa_2" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_a_412_qaa.add_dim(1);
+// -->
+</script>
+<br>
+
+<textarea name="a_412_qaa_attr" rows=5 cols=70>
+missing_value: -999.0
+units: m^-1
+_FillValue: -999.0
+long_name: Total absorption at 412 nm, QAA algorithm v5
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_a_443_qaa = new dods_var("a_443_qaa", "dods_a_443_qaa", 1);
+DODS_URL.add_dods_var(dods_a_443_qaa);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_a_443_qaa"
+onclick="dods_a_443_qaa.handle_projection_change(get_dods_a_443_qaa)">
+<font size="+1">a_443_qaa</font>: Grid</b><br>
+
+time:<input type="text" name="dods_a_443_qaa_0" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_a_443_qaa.add_dim(1);
+// -->
+</script>
+lat:<input type="text" name="dods_a_443_qaa_1" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_a_443_qaa.add_dim(1);
+// -->
+</script>
+lon:<input type="text" name="dods_a_443_qaa_2" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_a_443_qaa.add_dim(1);
+// -->
+</script>
+<br>
+
+<textarea name="a_443_qaa_attr" rows=5 cols=70>
+missing_value: -999.0
+units: m^-1
+_FillValue: -999.0
+long_name: Total absorption at 443 nm, QAA algorithm v5
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_a_469_qaa = new dods_var("a_469_qaa", "dods_a_469_qaa", 1);
+DODS_URL.add_dods_var(dods_a_469_qaa);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_a_469_qaa"
+onclick="dods_a_469_qaa.handle_projection_change(get_dods_a_469_qaa)">
+<font size="+1">a_469_qaa</font>: Grid</b><br>
+
+time:<input type="text" name="dods_a_469_qaa_0" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_a_469_qaa.add_dim(1);
+// -->
+</script>
+lat:<input type="text" name="dods_a_469_qaa_1" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_a_469_qaa.add_dim(1);
+// -->
+</script>
+lon:<input type="text" name="dods_a_469_qaa_2" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_a_469_qaa.add_dim(1);
+// -->
+</script>
+<br>
+
+<textarea name="a_469_qaa_attr" rows=5 cols=70>
+missing_value: -999.0
+units: m^-1
+_FillValue: -999.0
+long_name: Total absorption at 469 nm, QAA algorithm v5
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_a_488_qaa = new dods_var("a_488_qaa", "dods_a_488_qaa", 1);
+DODS_URL.add_dods_var(dods_a_488_qaa);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_a_488_qaa"
+onclick="dods_a_488_qaa.handle_projection_change(get_dods_a_488_qaa)">
+<font size="+1">a_488_qaa</font>: Grid</b><br>
+
+time:<input type="text" name="dods_a_488_qaa_0" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_a_488_qaa.add_dim(1);
+// -->
+</script>
+lat:<input type="text" name="dods_a_488_qaa_1" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_a_488_qaa.add_dim(1);
+// -->
+</script>
+lon:<input type="text" name="dods_a_488_qaa_2" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_a_488_qaa.add_dim(1);
+// -->
+</script>
+<br>
+
+<textarea name="a_488_qaa_attr" rows=5 cols=70>
+missing_value: -999.0
+units: m^-1
+_FillValue: -999.0
+long_name: Total absorption at 488 nm, QAA algorithm v5
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_a_531_qaa = new dods_var("a_531_qaa", "dods_a_531_qaa", 1);
+DODS_URL.add_dods_var(dods_a_531_qaa);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_a_531_qaa"
+onclick="dods_a_531_qaa.handle_projection_change(get_dods_a_531_qaa)">
+<font size="+1">a_531_qaa</font>: Grid</b><br>
+
+time:<input type="text" name="dods_a_531_qaa_0" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_a_531_qaa.add_dim(1);
+// -->
+</script>
+lat:<input type="text" name="dods_a_531_qaa_1" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_a_531_qaa.add_dim(1);
+// -->
+</script>
+lon:<input type="text" name="dods_a_531_qaa_2" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_a_531_qaa.add_dim(1);
+// -->
+</script>
+<br>
+
+<textarea name="a_531_qaa_attr" rows=5 cols=70>
+missing_value: -999.0
+long_name: Total absorption at 531 nm, QAA algorithm v5
+units: m^-1
+_FillValue: -999.0
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_a_547_qaa = new dods_var("a_547_qaa", "dods_a_547_qaa", 1);
+DODS_URL.add_dods_var(dods_a_547_qaa);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_a_547_qaa"
+onclick="dods_a_547_qaa.handle_projection_change(get_dods_a_547_qaa)">
+<font size="+1">a_547_qaa</font>: Grid</b><br>
+
+time:<input type="text" name="dods_a_547_qaa_0" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_a_547_qaa.add_dim(1);
+// -->
+</script>
+lat:<input type="text" name="dods_a_547_qaa_1" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_a_547_qaa.add_dim(1);
+// -->
+</script>
+lon:<input type="text" name="dods_a_547_qaa_2" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_a_547_qaa.add_dim(1);
+// -->
+</script>
+<br>
+
+<textarea name="a_547_qaa_attr" rows=5 cols=70>
+missing_value: -999.0
+units: m^-1
+_FillValue: -999.0
+long_name: Total absorption at 547 nm, QAA algorithm v5
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_a_555_qaa = new dods_var("a_555_qaa", "dods_a_555_qaa", 1);
+DODS_URL.add_dods_var(dods_a_555_qaa);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_a_555_qaa"
+onclick="dods_a_555_qaa.handle_projection_change(get_dods_a_555_qaa)">
+<font size="+1">a_555_qaa</font>: Grid</b><br>
+
+time:<input type="text" name="dods_a_555_qaa_0" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_a_555_qaa.add_dim(1);
+// -->
+</script>
+lat:<input type="text" name="dods_a_555_qaa_1" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_a_555_qaa.add_dim(1);
+// -->
+</script>
+lon:<input type="text" name="dods_a_555_qaa_2" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_a_555_qaa.add_dim(1);
+// -->
+</script>
+<br>
+
+<textarea name="a_555_qaa_attr" rows=5 cols=70>
+missing_value: -999.0
+units: m^-1
+_FillValue: -999.0
+long_name: Total absorption at 555 nm, QAA algorithm v5
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_a_645_qaa = new dods_var("a_645_qaa", "dods_a_645_qaa", 1);
+DODS_URL.add_dods_var(dods_a_645_qaa);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_a_645_qaa"
+onclick="dods_a_645_qaa.handle_projection_change(get_dods_a_645_qaa)">
+<font size="+1">a_645_qaa</font>: Grid</b><br>
+
+time:<input type="text" name="dods_a_645_qaa_0" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_a_645_qaa.add_dim(1);
+// -->
+</script>
+lat:<input type="text" name="dods_a_645_qaa_1" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_a_645_qaa.add_dim(1);
+// -->
+</script>
+lon:<input type="text" name="dods_a_645_qaa_2" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_a_645_qaa.add_dim(1);
+// -->
+</script>
+<br>
+
+<textarea name="a_645_qaa_attr" rows=5 cols=70>
+missing_value: -999.0
+units: m^-1
+_FillValue: -999.0
+long_name: Total absorption at 645 nm, QAA algorithm v5
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_a_667_qaa = new dods_var("a_667_qaa", "dods_a_667_qaa", 1);
+DODS_URL.add_dods_var(dods_a_667_qaa);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_a_667_qaa"
+onclick="dods_a_667_qaa.handle_projection_change(get_dods_a_667_qaa)">
+<font size="+1">a_667_qaa</font>: Grid</b><br>
+
+time:<input type="text" name="dods_a_667_qaa_0" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_a_667_qaa.add_dim(1);
+// -->
+</script>
+lat:<input type="text" name="dods_a_667_qaa_1" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_a_667_qaa.add_dim(1);
+// -->
+</script>
+lon:<input type="text" name="dods_a_667_qaa_2" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_a_667_qaa.add_dim(1);
+// -->
+</script>
+<br>
+
+<textarea name="a_667_qaa_attr" rows=5 cols=70>
+missing_value: -999.0
+units: m^-1
+_FillValue: -999.0
+long_name: Total absorption at 667 nm, QAA algorithm v5
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_a_678_qaa = new dods_var("a_678_qaa", "dods_a_678_qaa", 1);
+DODS_URL.add_dods_var(dods_a_678_qaa);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_a_678_qaa"
+onclick="dods_a_678_qaa.handle_projection_change(get_dods_a_678_qaa)">
+<font size="+1">a_678_qaa</font>: Grid</b><br>
+
+time:<input type="text" name="dods_a_678_qaa_0" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_a_678_qaa.add_dim(1);
+// -->
+</script>
+lat:<input type="text" name="dods_a_678_qaa_1" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_a_678_qaa.add_dim(1);
+// -->
+</script>
+lon:<input type="text" name="dods_a_678_qaa_2" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_a_678_qaa.add_dim(1);
+// -->
+</script>
+<br>
+
+<textarea name="a_678_qaa_attr" rows=5 cols=70>
+missing_value: -999.0
+units: m^-1
+_FillValue: -999.0
+long_name: Total absorption at 678 nm, QAA algorithm v5
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_a_748_qaa = new dods_var("a_748_qaa", "dods_a_748_qaa", 1);
+DODS_URL.add_dods_var(dods_a_748_qaa);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_a_748_qaa"
+onclick="dods_a_748_qaa.handle_projection_change(get_dods_a_748_qaa)">
+<font size="+1">a_748_qaa</font>: Grid</b><br>
+
+time:<input type="text" name="dods_a_748_qaa_0" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_a_748_qaa.add_dim(1);
+// -->
+</script>
+lat:<input type="text" name="dods_a_748_qaa_1" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_a_748_qaa.add_dim(1);
+// -->
+</script>
+lon:<input type="text" name="dods_a_748_qaa_2" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_a_748_qaa.add_dim(1);
+// -->
+</script>
+<br>
+
+<textarea name="a_748_qaa_attr" rows=5 cols=70>
+missing_value: -999.0
+units: m^-1
+_FillValue: -999.0
+long_name: Total absorption at 748 nm, QAA algorithm v5
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_a_869_qaa = new dods_var("a_869_qaa", "dods_a_869_qaa", 1);
+DODS_URL.add_dods_var(dods_a_869_qaa);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_a_869_qaa"
+onclick="dods_a_869_qaa.handle_projection_change(get_dods_a_869_qaa)">
+<font size="+1">a_869_qaa</font>: Grid</b><br>
+
+time:<input type="text" name="dods_a_869_qaa_0" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_a_869_qaa.add_dim(1);
+// -->
+</script>
+lat:<input type="text" name="dods_a_869_qaa_1" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_a_869_qaa.add_dim(1);
+// -->
+</script>
+lon:<input type="text" name="dods_a_869_qaa_2" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_a_869_qaa.add_dim(1);
+// -->
+</script>
+<br>
+
+<textarea name="a_869_qaa_attr" rows=5 cols=70>
+missing_value: -999.0
+units: m^-1
+_FillValue: -999.0
+long_name: Total absorption at 869 nm, QAA algorithm v5
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_bb_547_qaa = new dods_var("bb_547_qaa", "dods_bb_547_qaa", 1);
+DODS_URL.add_dods_var(dods_bb_547_qaa);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_bb_547_qaa"
+onclick="dods_bb_547_qaa.handle_projection_change(get_dods_bb_547_qaa)">
+<font size="+1">bb_547_qaa</font>: Grid</b><br>
+
+time:<input type="text" name="dods_bb_547_qaa_0" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_bb_547_qaa.add_dim(1);
+// -->
+</script>
+lat:<input type="text" name="dods_bb_547_qaa_1" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_bb_547_qaa.add_dim(1);
+// -->
+</script>
+lon:<input type="text" name="dods_bb_547_qaa_2" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_bb_547_qaa.add_dim(1);
+// -->
+</script>
+<br>
+
+<textarea name="bb_547_qaa_attr" rows=5 cols=70>
+missing_value: -999.0
+units: m^-1
+_FillValue: -999.0
+long_name: Total backscatter at 547 nm, QAA algorithm v5
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_aph_443_qaa = new dods_var("aph_443_qaa", "dods_aph_443_qaa", 1);
+DODS_URL.add_dods_var(dods_aph_443_qaa);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_aph_443_qaa"
+onclick="dods_aph_443_qaa.handle_projection_change(get_dods_aph_443_qaa)">
+<font size="+1">aph_443_qaa</font>: Grid</b><br>
+
+time:<input type="text" name="dods_aph_443_qaa_0" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_aph_443_qaa.add_dim(1);
+// -->
+</script>
+lat:<input type="text" name="dods_aph_443_qaa_1" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_aph_443_qaa.add_dim(1);
+// -->
+</script>
+lon:<input type="text" name="dods_aph_443_qaa_2" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_aph_443_qaa.add_dim(1);
+// -->
+</script>
+<br>
+
+<textarea name="aph_443_qaa_attr" rows=5 cols=70>
+missing_value: -999.0
+units: m^-1
+_FillValue: -999.0
+long_name: Absorption due to phytoplankton at 443 nm, QAA algorithm v5
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_adg_412_qaa = new dods_var("adg_412_qaa", "dods_adg_412_qaa", 1);
+DODS_URL.add_dods_var(dods_adg_412_qaa);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_adg_412_qaa"
+onclick="dods_adg_412_qaa.handle_projection_change(get_dods_adg_412_qaa)">
+<font size="+1">adg_412_qaa</font>: Grid</b><br>
+
+time:<input type="text" name="dods_adg_412_qaa_0" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_adg_412_qaa.add_dim(1);
+// -->
+</script>
+lat:<input type="text" name="dods_adg_412_qaa_1" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_adg_412_qaa.add_dim(1);
+// -->
+</script>
+lon:<input type="text" name="dods_adg_412_qaa_2" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_adg_412_qaa.add_dim(1);
+// -->
+</script>
+<br>
+
+<textarea name="adg_412_qaa_attr" rows=5 cols=70>
+missing_value: -999.0
+units: m^-1
+_FillValue: -999.0
+long_name: Absorption due to gelbstof and detrital material at 412 nm, QAA algorithm v5
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_c_547_qaa = new dods_var("c_547_qaa", "dods_c_547_qaa", 1);
+DODS_URL.add_dods_var(dods_c_547_qaa);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_c_547_qaa"
+onclick="dods_c_547_qaa.handle_projection_change(get_dods_c_547_qaa)">
+<font size="+1">c_547_qaa</font>: Grid</b><br>
+
+time:<input type="text" name="dods_c_547_qaa_0" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_c_547_qaa.add_dim(1);
+// -->
+</script>
+lat:<input type="text" name="dods_c_547_qaa_1" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_c_547_qaa.add_dim(1);
+// -->
+</script>
+lon:<input type="text" name="dods_c_547_qaa_2" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_c_547_qaa.add_dim(1);
+// -->
+</script>
+<br>
+
+<textarea name="c_547_qaa_attr" rows=5 cols=70>
+missing_value: -999.0
+units: m^-1
+_FillValue: -999.0
+long_name: Beam attenuation at 547 nm, QAA algorithm v5
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_rrs_412 = new dods_var("rrs_412", "dods_rrs_412", 1);
+DODS_URL.add_dods_var(dods_rrs_412);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_rrs_412"
+onclick="dods_rrs_412.handle_projection_change(get_dods_rrs_412)">
+<font size="+1">rrs_412</font>: Grid</b><br>
+
+time:<input type="text" name="dods_rrs_412_0" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_rrs_412.add_dim(1);
+// -->
+</script>
+lat:<input type="text" name="dods_rrs_412_1" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_rrs_412.add_dim(1);
+// -->
+</script>
+lon:<input type="text" name="dods_rrs_412_2" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_rrs_412.add_dim(1);
+// -->
+</script>
+<br>
+
+<textarea name="rrs_412_attr" rows=5 cols=70>
+missing_value: -999.0
+units: sr^-1
+_FillValue: -999.0
+long_name: Remote sensing reflectance at 412 nm
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_rrs_443 = new dods_var("rrs_443", "dods_rrs_443", 1);
+DODS_URL.add_dods_var(dods_rrs_443);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_rrs_443"
+onclick="dods_rrs_443.handle_projection_change(get_dods_rrs_443)">
+<font size="+1">rrs_443</font>: Grid</b><br>
+
+time:<input type="text" name="dods_rrs_443_0" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_rrs_443.add_dim(1);
+// -->
+</script>
+lat:<input type="text" name="dods_rrs_443_1" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_rrs_443.add_dim(1);
+// -->
+</script>
+lon:<input type="text" name="dods_rrs_443_2" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_rrs_443.add_dim(1);
+// -->
+</script>
+<br>
+
+<textarea name="rrs_443_attr" rows=5 cols=70>
+missing_value: -999.0
+units: sr^-1
+_FillValue: -999.0
+long_name: Remote sensing reflectance at 443 nm
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_rrs_469 = new dods_var("rrs_469", "dods_rrs_469", 1);
+DODS_URL.add_dods_var(dods_rrs_469);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_rrs_469"
+onclick="dods_rrs_469.handle_projection_change(get_dods_rrs_469)">
+<font size="+1">rrs_469</font>: Grid</b><br>
+
+time:<input type="text" name="dods_rrs_469_0" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_rrs_469.add_dim(1);
+// -->
+</script>
+lat:<input type="text" name="dods_rrs_469_1" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_rrs_469.add_dim(1);
+// -->
+</script>
+lon:<input type="text" name="dods_rrs_469_2" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_rrs_469.add_dim(1);
+// -->
+</script>
+<br>
+
+<textarea name="rrs_469_attr" rows=5 cols=70>
+missing_value: -999.0
+units: sr^-1
+_FillValue: -999.0
+long_name: Remote sensing reflectance at 469 nm
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_rrs_488 = new dods_var("rrs_488", "dods_rrs_488", 1);
+DODS_URL.add_dods_var(dods_rrs_488);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_rrs_488"
+onclick="dods_rrs_488.handle_projection_change(get_dods_rrs_488)">
+<font size="+1">rrs_488</font>: Grid</b><br>
+
+time:<input type="text" name="dods_rrs_488_0" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_rrs_488.add_dim(1);
+// -->
+</script>
+lat:<input type="text" name="dods_rrs_488_1" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_rrs_488.add_dim(1);
+// -->
+</script>
+lon:<input type="text" name="dods_rrs_488_2" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_rrs_488.add_dim(1);
+// -->
+</script>
+<br>
+
+<textarea name="rrs_488_attr" rows=5 cols=70>
+missing_value: -999.0
+units: sr^-1
+_FillValue: -999.0
+long_name: Remote sensing reflectance at 488 nm
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_rrs_531 = new dods_var("rrs_531", "dods_rrs_531", 1);
+DODS_URL.add_dods_var(dods_rrs_531);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_rrs_531"
+onclick="dods_rrs_531.handle_projection_change(get_dods_rrs_531)">
+<font size="+1">rrs_531</font>: Grid</b><br>
+
+time:<input type="text" name="dods_rrs_531_0" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_rrs_531.add_dim(1);
+// -->
+</script>
+lat:<input type="text" name="dods_rrs_531_1" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_rrs_531.add_dim(1);
+// -->
+</script>
+lon:<input type="text" name="dods_rrs_531_2" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_rrs_531.add_dim(1);
+// -->
+</script>
+<br>
+
+<textarea name="rrs_531_attr" rows=5 cols=70>
+missing_value: -999.0
+units: sr^-1
+_FillValue: -999.0
+long_name: Remote sensing reflectance at 531 nm
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_rrs_547 = new dods_var("rrs_547", "dods_rrs_547", 1);
+DODS_URL.add_dods_var(dods_rrs_547);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_rrs_547"
+onclick="dods_rrs_547.handle_projection_change(get_dods_rrs_547)">
+<font size="+1">rrs_547</font>: Grid</b><br>
+
+time:<input type="text" name="dods_rrs_547_0" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_rrs_547.add_dim(1);
+// -->
+</script>
+lat:<input type="text" name="dods_rrs_547_1" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_rrs_547.add_dim(1);
+// -->
+</script>
+lon:<input type="text" name="dods_rrs_547_2" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_rrs_547.add_dim(1);
+// -->
+</script>
+<br>
+
+<textarea name="rrs_547_attr" rows=5 cols=70>
+missing_value: -999.0
+units: sr^-1
+_FillValue: -999.0
+long_name: Remote sensing reflectance at 547 nm
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_rrs_555 = new dods_var("rrs_555", "dods_rrs_555", 1);
+DODS_URL.add_dods_var(dods_rrs_555);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_rrs_555"
+onclick="dods_rrs_555.handle_projection_change(get_dods_rrs_555)">
+<font size="+1">rrs_555</font>: Grid</b><br>
+
+time:<input type="text" name="dods_rrs_555_0" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_rrs_555.add_dim(1);
+// -->
+</script>
+lat:<input type="text" name="dods_rrs_555_1" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_rrs_555.add_dim(1);
+// -->
+</script>
+lon:<input type="text" name="dods_rrs_555_2" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_rrs_555.add_dim(1);
+// -->
+</script>
+<br>
+
+<textarea name="rrs_555_attr" rows=5 cols=70>
+missing_value: -999.0
+units: sr^-1
+_FillValue: -999.0
+long_name: Remote sensing reflectance at 555 nm
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_rrs_645 = new dods_var("rrs_645", "dods_rrs_645", 1);
+DODS_URL.add_dods_var(dods_rrs_645);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_rrs_645"
+onclick="dods_rrs_645.handle_projection_change(get_dods_rrs_645)">
+<font size="+1">rrs_645</font>: Grid</b><br>
+
+time:<input type="text" name="dods_rrs_645_0" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_rrs_645.add_dim(1);
+// -->
+</script>
+lat:<input type="text" name="dods_rrs_645_1" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_rrs_645.add_dim(1);
+// -->
+</script>
+lon:<input type="text" name="dods_rrs_645_2" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_rrs_645.add_dim(1);
+// -->
+</script>
+<br>
+
+<textarea name="rrs_645_attr" rows=5 cols=70>
+missing_value: -999.0
+units: sr^-1
+_FillValue: -999.0
+long_name: Remote sensing reflectance at 645 nm
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_rrs_667 = new dods_var("rrs_667", "dods_rrs_667", 1);
+DODS_URL.add_dods_var(dods_rrs_667);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_rrs_667"
+onclick="dods_rrs_667.handle_projection_change(get_dods_rrs_667)">
+<font size="+1">rrs_667</font>: Grid</b><br>
+
+time:<input type="text" name="dods_rrs_667_0" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_rrs_667.add_dim(1);
+// -->
+</script>
+lat:<input type="text" name="dods_rrs_667_1" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_rrs_667.add_dim(1);
+// -->
+</script>
+lon:<input type="text" name="dods_rrs_667_2" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_rrs_667.add_dim(1);
+// -->
+</script>
+<br>
+
+<textarea name="rrs_667_attr" rows=5 cols=70>
+missing_value: -999.0
+units: sr^-1
+_FillValue: -999.0
+long_name: Remote sensing reflectance at 667 nm
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_rrs_678 = new dods_var("rrs_678", "dods_rrs_678", 1);
+DODS_URL.add_dods_var(dods_rrs_678);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_rrs_678"
+onclick="dods_rrs_678.handle_projection_change(get_dods_rrs_678)">
+<font size="+1">rrs_678</font>: Grid</b><br>
+
+time:<input type="text" name="dods_rrs_678_0" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_rrs_678.add_dim(1);
+// -->
+</script>
+lat:<input type="text" name="dods_rrs_678_1" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_rrs_678.add_dim(1);
+// -->
+</script>
+lon:<input type="text" name="dods_rrs_678_2" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_rrs_678.add_dim(1);
+// -->
+</script>
+<br>
+
+<textarea name="rrs_678_attr" rows=5 cols=70>
+missing_value: -999.0
+units: sr^-1
+_FillValue: -999.0
+long_name: Remote sensing reflectance at 678 nm
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_rrs_748 = new dods_var("rrs_748", "dods_rrs_748", 1);
+DODS_URL.add_dods_var(dods_rrs_748);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_rrs_748"
+onclick="dods_rrs_748.handle_projection_change(get_dods_rrs_748)">
+<font size="+1">rrs_748</font>: Grid</b><br>
+
+time:<input type="text" name="dods_rrs_748_0" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_rrs_748.add_dim(1);
+// -->
+</script>
+lat:<input type="text" name="dods_rrs_748_1" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_rrs_748.add_dim(1);
+// -->
+</script>
+lon:<input type="text" name="dods_rrs_748_2" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_rrs_748.add_dim(1);
+// -->
+</script>
+<br>
+
+<textarea name="rrs_748_attr" rows=5 cols=70>
+missing_value: -999.0
+units: sr^-1
+_FillValue: -999.0
+long_name: Remote sensing reflectance at 748 nm
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_rrs_869 = new dods_var("rrs_869", "dods_rrs_869", 1);
+DODS_URL.add_dods_var(dods_rrs_869);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_rrs_869"
+onclick="dods_rrs_869.handle_projection_change(get_dods_rrs_869)">
+<font size="+1">rrs_869</font>: Grid</b><br>
+
+time:<input type="text" name="dods_rrs_869_0" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_rrs_869.add_dim(1);
+// -->
+</script>
+lat:<input type="text" name="dods_rrs_869_1" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_rrs_869.add_dim(1);
+// -->
+</script>
+lon:<input type="text" name="dods_rrs_869_2" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_rrs_869.add_dim(1);
+// -->
+</script>
+<br>
+
+<textarea name="rrs_869_attr" rows=5 cols=70>
+missing_value: -999.0
+units: sr^-1
+_FillValue: -999.0
+long_name: Remote sensing reflectance at 869 nm
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_TSS_gould = new dods_var("TSS_gould", "dods_TSS_gould", 1);
+DODS_URL.add_dods_var(dods_TSS_gould);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_TSS_gould"
+onclick="dods_TSS_gould.handle_projection_change(get_dods_TSS_gould)">
+<font size="+1">TSS_gould</font>: Grid</b><br>
+
+time:<input type="text" name="dods_TSS_gould_0" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_TSS_gould.add_dim(1);
+// -->
+</script>
+lat:<input type="text" name="dods_TSS_gould_1" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_TSS_gould.add_dim(1);
+// -->
+</script>
+lon:<input type="text" name="dods_TSS_gould_2" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_TSS_gould.add_dim(1);
+// -->
+</script>
+<br>
+
+<textarea name="TSS_gould_attr" rows=5 cols=70>
+missing_value: -999.0
+units: mg l^-1
+_FillValue: -999.0
+long_name: Total Suspended Particles (PIM+POM), Gould (200711)
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_PIM_gould = new dods_var("PIM_gould", "dods_PIM_gould", 1);
+DODS_URL.add_dods_var(dods_PIM_gould);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_PIM_gould"
+onclick="dods_PIM_gould.handle_projection_change(get_dods_PIM_gould)">
+<font size="+1">PIM_gould</font>: Grid</b><br>
+
+time:<input type="text" name="dods_PIM_gould_0" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_PIM_gould.add_dim(1);
+// -->
+</script>
+lat:<input type="text" name="dods_PIM_gould_1" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_PIM_gould.add_dim(1);
+// -->
+</script>
+lon:<input type="text" name="dods_PIM_gould_2" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_PIM_gould.add_dim(1);
+// -->
+</script>
+<br>
+
+<textarea name="PIM_gould_attr" rows=5 cols=70>
+missing_value: -999.0
+long_name: Particulate Inorganic Matter From Sediment and Detrital Absorption at 412nm, Gould (200711)
+units: mg l^-1
+_FillValue: -999.0
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_POM_gould = new dods_var("POM_gould", "dods_POM_gould", 1);
+DODS_URL.add_dods_var(dods_POM_gould);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_POM_gould"
+onclick="dods_POM_gould.handle_projection_change(get_dods_POM_gould)">
+<font size="+1">POM_gould</font>: Grid</b><br>
+
+time:<input type="text" name="dods_POM_gould_0" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_POM_gould.add_dim(1);
+// -->
+</script>
+lat:<input type="text" name="dods_POM_gould_1" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_POM_gould.add_dim(1);
+// -->
+</script>
+lon:<input type="text" name="dods_POM_gould_2" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_POM_gould.add_dim(1);
+// -->
+</script>
+<br>
+
+<textarea name="POM_gould_attr" rows=5 cols=70>
+missing_value: -999.0
+units: mg l^-1
+_FillValue: -999.0
+long_name: Particulate Organic Matter From Phytoplankton Absorption at 443nm, Gould (200711)
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_salinity = new dods_var("salinity", "dods_salinity", 1);
+DODS_URL.add_dods_var(dods_salinity);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_salinity"
+onclick="dods_salinity.handle_projection_change(get_dods_salinity)">
+<font size="+1">salinity</font>: Grid</b><br>
+
+time:<input type="text" name="dods_salinity_0" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_salinity.add_dim(1);
+// -->
+</script>
+lat:<input type="text" name="dods_salinity_1" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_salinity.add_dim(1);
+// -->
+</script>
+lon:<input type="text" name="dods_salinity_2" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_salinity.add_dim(1);
+// -->
+</script>
+<br>
+
+<textarea name="salinity_attr" rows=5 cols=70>
+missing_value: -999.0
+units: ppt
+_FillValue: -999.0
+long_name: Salinity - based on CDOM, Ladner algorithm
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_sst = new dods_var("sst", "dods_sst", 1);
+DODS_URL.add_dods_var(dods_sst);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_sst"
+onclick="dods_sst.handle_projection_change(get_dods_sst)">
+<font size="+1">sst</font>: Grid</b><br>
+
+time:<input type="text" name="dods_sst_0" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_sst.add_dim(1);
+// -->
+</script>
+lat:<input type="text" name="dods_sst_1" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_sst.add_dim(1);
+// -->
+</script>
+lon:<input type="text" name="dods_sst_2" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_sst.add_dim(1);
+// -->
+</script>
+<br>
+
+<textarea name="sst_attr" rows=5 cols=70>
+missing_value: -999.0
+units: Celsius
+_FillValue: -999.0
+long_name: Sea Surface Temperature
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_red_ch = new dods_var("red_ch", "dods_red_ch", 1);
+DODS_URL.add_dods_var(dods_red_ch);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_red_ch"
+onclick="dods_red_ch.handle_projection_change(get_dods_red_ch)">
+<font size="+1">red_ch</font>: Grid</b><br>
+
+time:<input type="text" name="dods_red_ch_0" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_red_ch.add_dim(1);
+// -->
+</script>
+lat:<input type="text" name="dods_red_ch_1" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_red_ch.add_dim(1);
+// -->
+</script>
+lon:<input type="text" name="dods_red_ch_2" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_red_ch.add_dim(1);
+// -->
+</script>
+<br>
+
+<textarea name="red_ch_attr" rows=5 cols=70>
+missing_value: -999
+_FillValue: -999
+long_name: Red Channel
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_green_ch = new dods_var("green_ch", "dods_green_ch", 1);
+DODS_URL.add_dods_var(dods_green_ch);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_green_ch"
+onclick="dods_green_ch.handle_projection_change(get_dods_green_ch)">
+<font size="+1">green_ch</font>: Grid</b><br>
+
+time:<input type="text" name="dods_green_ch_0" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_green_ch.add_dim(1);
+// -->
+</script>
+lat:<input type="text" name="dods_green_ch_1" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_green_ch.add_dim(1);
+// -->
+</script>
+lon:<input type="text" name="dods_green_ch_2" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_green_ch.add_dim(1);
+// -->
+</script>
+<br>
+
+<textarea name="green_ch_attr" rows=5 cols=70>
+missing_value: -999
+_FillValue: -999
+long_name: Green Channel
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_blue_ch = new dods_var("blue_ch", "dods_blue_ch", 1);
+DODS_URL.add_dods_var(dods_blue_ch);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_blue_ch"
+onclick="dods_blue_ch.handle_projection_change(get_dods_blue_ch)">
+<font size="+1">blue_ch</font>: Grid</b><br>
+
+time:<input type="text" name="dods_blue_ch_0" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_blue_ch.add_dim(1);
+// -->
+</script>
+lat:<input type="text" name="dods_blue_ch_1" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_blue_ch.add_dim(1);
+// -->
+</script>
+lon:<input type="text" name="dods_blue_ch_2" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_blue_ch.add_dim(1);
+// -->
+</script>
+<br>
+
+<textarea name="blue_ch_attr" rows=5 cols=70>
+missing_value: -999
+_FillValue: -999
+long_name: Blue Channel
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_M_WK = new dods_var("M_WK", "dods_M_WK", 1);
+DODS_URL.add_dods_var(dods_M_WK);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_M_WK"
+onclick="dods_M_WK.handle_projection_change(get_dods_M_WK)">
+<font size="+1">M_WK</font>: Grid</b><br>
+
+time:<input type="text" name="dods_M_WK_0" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_M_WK.add_dim(1);
+// -->
+</script>
+lat:<input type="text" name="dods_M_WK_1" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_M_WK.add_dim(1);
+// -->
+</script>
+lon:<input type="text" name="dods_M_WK_2" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_M_WK.add_dim(1);
+// -->
+</script>
+<br>
+
+<textarea name="M_WK_attr" rows=5 cols=70>
+missing_value: -999
+_FillValue: -999
+long_name: Water Mass Classifications using Wards and Kmeans clustering after Oliver and Irwin 2008
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+<script type="text/javascript">
+<!--
+dods_M_WK_G = new dods_var("M_WK_G", "dods_M_WK_G", 1);
+DODS_URL.add_dods_var(dods_M_WK_G);
+// -->
+</script>
+<b><input type="checkbox" name="get_dods_M_WK_G"
+onclick="dods_M_WK_G.handle_projection_change(get_dods_M_WK_G)">
+<font size="+1">M_WK_G</font>: Grid</b><br>
+
+time:<input type="text" name="dods_M_WK_G_0" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_M_WK_G.add_dim(1);
+// -->
+</script>
+lat:<input type="text" name="dods_M_WK_G_1" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_M_WK_G.add_dim(1);
+// -->
+</script>
+lon:<input type="text" name="dods_M_WK_G_2" size=8 onfocus="describe_index()"onChange="DODS_URL.update_url()">
+<script type="text/javascript">
+<!--
+dods_M_WK_G.add_dim(1);
+// -->
+</script>
+<br>
+
+<textarea name="M_WK_G_attr" rows=5 cols=70>
+missing_value: -999.0
+_FillValue: -999.0
+long_name: Gradient Strengths Across Water Mass Classifications using Wards and Kmeans clustering after Oliver and Irwin 2008
+</textarea>
+
+
+<p><p>
+
+<tr><td><td>
+
+</table></form>
+
+<hr>
+
+<address>
+<p>For questions or comments about this dataset, contact the administrator of this server [Kyle Wilcox] at: <a href='mailto:kwilcox@asascience.com'>kwilcox@asascience.com</a></p>
+<p>For questions or comments about OPeNDAP, email OPeNDAP support at: <a href='mailto:support@opendap.org'>support@opendap.org</a></p>
+</address></body></html>
+<hr>
+<h2>DDS:</h2>
+<pre>
+Dataset {
+    Float64 lon[lon = 5000];
+    Float64 lat[lat = 4500];
+    Int32 time[time = 137];
+    Grid {
+     ARRAY:
+        Float32 chl_oc3[time = 137][lat = 4500][lon = 5000];
+     MAPS:
+        Int32 time[time = 137];
+        Float64 lat[lat = 4500];
+        Float64 lon[lon = 5000];
+    } chl_oc3;
+    Grid {
+     ARRAY:
+        Float32 a_412_qaa[time = 137][lat = 4500][lon = 5000];
+     MAPS:
+        Int32 time[time = 137];
+        Float64 lat[lat = 4500];
+        Float64 lon[lon = 5000];
+    } a_412_qaa;
+    Grid {
+     ARRAY:
+        Float32 a_443_qaa[time = 137][lat = 4500][lon = 5000];
+     MAPS:
+        Int32 time[time = 137];
+        Float64 lat[lat = 4500];
+        Float64 lon[lon = 5000];
+    } a_443_qaa;
+    Grid {
+     ARRAY:
+        Float32 a_469_qaa[time = 137][lat = 4500][lon = 5000];
+     MAPS:
+        Int32 time[time = 137];
+        Float64 lat[lat = 4500];
+        Float64 lon[lon = 5000];
+    } a_469_qaa;
+    Grid {
+     ARRAY:
+        Float32 a_488_qaa[time = 137][lat = 4500][lon = 5000];
+     MAPS:
+        Int32 time[time = 137];
+        Float64 lat[lat = 4500];
+        Float64 lon[lon = 5000];
+    } a_488_qaa;
+    Grid {
+     ARRAY:
+        Float32 a_531_qaa[time = 137][lat = 4500][lon = 5000];
+     MAPS:
+        Int32 time[time = 137];
+        Float64 lat[lat = 4500];
+        Float64 lon[lon = 5000];
+    } a_531_qaa;
+    Grid {
+     ARRAY:
+        Float32 a_547_qaa[time = 137][lat = 4500][lon = 5000];
+     MAPS:
+        Int32 time[time = 137];
+        Float64 lat[lat = 4500];
+        Float64 lon[lon = 5000];
+    } a_547_qaa;
+    Grid {
+     ARRAY:
+        Float32 a_555_qaa[time = 137][lat = 4500][lon = 5000];
+     MAPS:
+        Int32 time[time = 137];
+        Float64 lat[lat = 4500];
+        Float64 lon[lon = 5000];
+    } a_555_qaa;
+    Grid {
+     ARRAY:
+        Float32 a_645_qaa[time = 137][lat = 4500][lon = 5000];
+     MAPS:
+        Int32 time[time = 137];
+        Float64 lat[lat = 4500];
+        Float64 lon[lon = 5000];
+    } a_645_qaa;
+    Grid {
+     ARRAY:
+        Float32 a_667_qaa[time = 137][lat = 4500][lon = 5000];
+     MAPS:
+        Int32 time[time = 137];
+        Float64 lat[lat = 4500];
+        Float64 lon[lon = 5000];
+    } a_667_qaa;
+    Grid {
+     ARRAY:
+        Float32 a_678_qaa[time = 137][lat = 4500][lon = 5000];
+     MAPS:
+        Int32 time[time = 137];
+        Float64 lat[lat = 4500];
+        Float64 lon[lon = 5000];
+    } a_678_qaa;
+    Grid {
+     ARRAY:
+        Float32 a_748_qaa[time = 137][lat = 4500][lon = 5000];
+     MAPS:
+        Int32 time[time = 137];
+        Float64 lat[lat = 4500];
+        Float64 lon[lon = 5000];
+    } a_748_qaa;
+    Grid {
+     ARRAY:
+        Float32 a_869_qaa[time = 137][lat = 4500][lon = 5000];
+     MAPS:
+        Int32 time[time = 137];
+        Float64 lat[lat = 4500];
+        Float64 lon[lon = 5000];
+    } a_869_qaa;
+    Grid {
+     ARRAY:
+        Float32 bb_547_qaa[time = 137][lat = 4500][lon = 5000];
+     MAPS:
+        Int32 time[time = 137];
+        Float64 lat[lat = 4500];
+        Float64 lon[lon = 5000];
+    } bb_547_qaa;
+    Grid {
+     ARRAY:
+        Float32 aph_443_qaa[time = 137][lat = 4500][lon = 5000];
+     MAPS:
+        Int32 time[time = 137];
+        Float64 lat[lat = 4500];
+        Float64 lon[lon = 5000];
+    } aph_443_qaa;
+    Grid {
+     ARRAY:
+        Float32 adg_412_qaa[time = 137][lat = 4500][lon = 5000];
+     MAPS:
+        Int32 time[time = 137];
+        Float64 lat[lat = 4500];
+        Float64 lon[lon = 5000];
+    } adg_412_qaa;
+    Grid {
+     ARRAY:
+        Float32 c_547_qaa[time = 137][lat = 4500][lon = 5000];
+     MAPS:
+        Int32 time[time = 137];
+        Float64 lat[lat = 4500];
+        Float64 lon[lon = 5000];
+    } c_547_qaa;
+    Grid {
+     ARRAY:
+        Float32 rrs_412[time = 137][lat = 4500][lon = 5000];
+     MAPS:
+        Int32 time[time = 137];
+        Float64 lat[lat = 4500];
+        Float64 lon[lon = 5000];
+    } rrs_412;
+    Grid {
+     ARRAY:
+        Float32 rrs_443[time = 137][lat = 4500][lon = 5000];
+     MAPS:
+        Int32 time[time = 137];
+        Float64 lat[lat = 4500];
+        Float64 lon[lon = 5000];
+    } rrs_443;
+    Grid {
+     ARRAY:
+        Float32 rrs_469[time = 137][lat = 4500][lon = 5000];
+     MAPS:
+        Int32 time[time = 137];
+        Float64 lat[lat = 4500];
+        Float64 lon[lon = 5000];
+    } rrs_469;
+    Grid {
+     ARRAY:
+        Float32 rrs_488[time = 137][lat = 4500][lon = 5000];
+     MAPS:
+        Int32 time[time = 137];
+        Float64 lat[lat = 4500];
+        Float64 lon[lon = 5000];
+    } rrs_488;
+    Grid {
+     ARRAY:
+        Float32 rrs_531[time = 137][lat = 4500][lon = 5000];
+     MAPS:
+        Int32 time[time = 137];
+        Float64 lat[lat = 4500];
+        Float64 lon[lon = 5000];
+    } rrs_531;
+    Grid {
+     ARRAY:
+        Float32 rrs_547[time = 137][lat = 4500][lon = 5000];
+     MAPS:
+        Int32 time[time = 137];
+        Float64 lat[lat = 4500];
+        Float64 lon[lon = 5000];
+    } rrs_547;
+    Grid {
+     ARRAY:
+        Float32 rrs_555[time = 137][lat = 4500][lon = 5000];
+     MAPS:
+        Int32 time[time = 137];
+        Float64 lat[lat = 4500];
+        Float64 lon[lon = 5000];
+    } rrs_555;
+    Grid {
+     ARRAY:
+        Float32 rrs_645[time = 137][lat = 4500][lon = 5000];
+     MAPS:
+        Int32 time[time = 137];
+        Float64 lat[lat = 4500];
+        Float64 lon[lon = 5000];
+    } rrs_645;
+    Grid {
+     ARRAY:
+        Float32 rrs_667[time = 137][lat = 4500][lon = 5000];
+     MAPS:
+        Int32 time[time = 137];
+        Float64 lat[lat = 4500];
+        Float64 lon[lon = 5000];
+    } rrs_667;
+    Grid {
+     ARRAY:
+        Float32 rrs_678[time = 137][lat = 4500][lon = 5000];
+     MAPS:
+        Int32 time[time = 137];
+        Float64 lat[lat = 4500];
+        Float64 lon[lon = 5000];
+    } rrs_678;
+    Grid {
+     ARRAY:
+        Float32 rrs_748[time = 137][lat = 4500][lon = 5000];
+     MAPS:
+        Int32 time[time = 137];
+        Float64 lat[lat = 4500];
+        Float64 lon[lon = 5000];
+    } rrs_748;
+    Grid {
+     ARRAY:
+        Float32 rrs_869[time = 137][lat = 4500][lon = 5000];
+     MAPS:
+        Int32 time[time = 137];
+        Float64 lat[lat = 4500];
+        Float64 lon[lon = 5000];
+    } rrs_869;
+    Grid {
+     ARRAY:
+        Float32 TSS_gould[time = 137][lat = 4500][lon = 5000];
+     MAPS:
+        Int32 time[time = 137];
+        Float64 lat[lat = 4500];
+        Float64 lon[lon = 5000];
+    } TSS_gould;
+    Grid {
+     ARRAY:
+        Float32 PIM_gould[time = 137][lat = 4500][lon = 5000];
+     MAPS:
+        Int32 time[time = 137];
+        Float64 lat[lat = 4500];
+        Float64 lon[lon = 5000];
+    } PIM_gould;
+    Grid {
+     ARRAY:
+        Float32 POM_gould[time = 137][lat = 4500][lon = 5000];
+     MAPS:
+        Int32 time[time = 137];
+        Float64 lat[lat = 4500];
+        Float64 lon[lon = 5000];
+    } POM_gould;
+    Grid {
+     ARRAY:
+        Float32 salinity[time = 137][lat = 4500][lon = 5000];
+     MAPS:
+        Int32 time[time = 137];
+        Float64 lat[lat = 4500];
+        Float64 lon[lon = 5000];
+    } salinity;
+    Grid {
+     ARRAY:
+        Float32 sst[time = 137][lat = 4500][lon = 5000];
+     MAPS:
+        Int32 time[time = 137];
+        Float64 lat[lat = 4500];
+        Float64 lon[lon = 5000];
+    } sst;
+    Grid {
+     ARRAY:
+        Int32 red_ch[time = 137][lat = 4500][lon = 5000];
+     MAPS:
+        Int32 time[time = 137];
+        Float64 lat[lat = 4500];
+        Float64 lon[lon = 5000];
+    } red_ch;
+    Grid {
+     ARRAY:
+        Int32 green_ch[time = 137][lat = 4500][lon = 5000];
+     MAPS:
+        Int32 time[time = 137];
+        Float64 lat[lat = 4500];
+        Float64 lon[lon = 5000];
+    } green_ch;
+    Grid {
+     ARRAY:
+        Int32 blue_ch[time = 137][lat = 4500][lon = 5000];
+     MAPS:
+        Int32 time[time = 137];
+        Float64 lat[lat = 4500];
+        Float64 lon[lon = 5000];
+    } blue_ch;
+    Grid {
+     ARRAY:
+        Int32 M_WK[time = 137][lat = 4500][lon = 5000];
+     MAPS:
+        Int32 time[time = 137];
+        Float64 lat[lat = 4500];
+        Float64 lon[lon = 5000];
+    } M_WK;
+    Grid {
+     ARRAY:
+        Float32 M_WK_G[time = 137][lat = 4500][lon = 5000];
+     MAPS:
+        Int32 time[time = 137];
+        Float64 lat[lat = 4500];
+        Float64 lon[lon = 5000];
+    } M_WK_G;
+} MODIS-Agg%2enc;
+</pre>
+<hr>
