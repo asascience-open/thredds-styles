@@ -1,3 +1,26 @@
-body {
-	color: #f00;	
+html 
+{
+    background: url(images/header.png) top left no-repeat;
+    background-color: #0069BD;
+    font-family: Tahoma, Arial, sans-serif;
+    padding-top: 100px;
+}
+body
+{
+    background-color: #eeeeee;
+    width: 825px;
+    margin: 20px auto 0 auto; 
+    border: 1px solid black;
+    padding: 20px;
+    
+}
+form
+{
+    margin: 0 25px 0 25px;
+    width: 825px;
+}
+pre
+{
+    margin: 20px;
+    padding: 20px;   
 }
