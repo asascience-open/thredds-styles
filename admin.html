@@ -1,0 +1,59 @@
+<!DOCTYPE html PUBLIC '-//W3C//DTD HTML 4.01 Transitional//EN'
+        'http://www.w3.org/TR/html4/loose.dtd'>
+<html>
+
+<head>
+<title> THREDDS Debug</title>
+<meta http-equiv="Content-Type" content="text/html">
+<link rel='stylesheet' href='/thredds/tds.css' type='text/css' >
+</head>
+<body>
+<table width='100%'>
+<tr><td>
+<img src='/thredds/threddsIcon.gif' alt='MARACOOS' align='left' valign='top' hspace='10' vspace='2'>
+<h3><strong><a href='/thredds/catalog.html'>Maracoos TDS Installation</a></strong></h3>
+<h3><strong><a href='http://www.unidata.ucar.edu/projects/THREDDS/tech/TDS.html'>THREDDS Data Server</a></strong></h3>
+
+</td></tr>
+</table>
+
+<br><a href='content/logs/'>Show TDS Logs</a>
+<br><a href='logs/'>Show Tomcat Logs</a>
+<h2>Debug Actions</h2>
+<pre>
+<h2>catalogs</h2>
+   <a href='/thredds/admin/debug?catalogs/showStatic'>Show static catalogs</a>
+   <a href='/thredds/admin/debug?catalogs/showRoots'>Show data roots</a>
+
+   <a href='/thredds/admin/debug?catalogs/getRoots'>Check data roots</a>
+   <a href='/thredds/admin/debug?catalogs/reinit'>Reinitialize</a>
+   <a href='/thredds/admin/debug?catalogs/sched'>Show scheduler</a>
+   <a href='/thredds/admin/debug?catalogs/showNcml'>Show ncml datasets</a>
+<h2>ncdodsServer</h2>
+   <a href='/thredds/admin/debug?ncdodsServer/help'>Show help page</a>
+
+   <a href='/thredds/admin/debug?ncdodsServer/version'>Show server version</a>
+<h2>Collections</h2>
+   <a href='/thredds/admin/debug?Collections/showFmrcCache'>Show FMRC Cache</a>
+   <a href='/thredds/admin/debug?Collections/syncFmrcCache'>Flush FMRC Cache to disk</a>
+   <a href='/thredds/admin/debug?Collections/triggerRescan'>Show Collections</a>
+<h2>General</h2>
+   <a href='/thredds/admin/debug?General/showVersion'>Show Build Version</a>
+
+   <a href='/thredds/admin/debug?General/showRuntime'>Show Runtime info</a>
+   <a href='/thredds/admin/debug?General/showFlags'>Show Debugging Flags</a>
+   <a href='/thredds/admin/debug?General/showRequest'>Show HTTP Request info</a>
+   <a href='/thredds/admin/debug?General/showSystemProperties'>Show Server info</a>
+   <a href='/thredds/admin/debug?General/showSession'>Show HTTP Session info</a>
+   <a href='/thredds/admin/debug?General/showSecurity'>Show Security info</a>
+
+<h2>Caches</h2>
+   <a href='/thredds/admin/debug?Caches/showCaches'>Show File Object Caches</a>
+   <a href='/thredds/admin/debug?Caches/clearCache'>Clear File Object Caches</a>
+   <a href='/thredds/admin/debug?Caches/forceNCCache'>Force clear NetcdfFileCache Cache</a>
+   <a href='/thredds/admin/debug?Caches/forceRAFCache'>Force clear RAF FileCache Cache</a>
+   <a href='/thredds/admin/debug?Caches/showMFileCache'>Show MFile Directory Cache</a>
+
+   <a href='/thredds/admin/debug?Caches/disableCache'>Disable Caches</a>
+</pre></body></html>
+
