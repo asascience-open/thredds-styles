@@ -7,7 +7,7 @@ body {
   color: black;
   border: 1px solid #000;
   margin: 200px auto 50px auto;
-  background-color: #eee;
+  background-color: #ddd;
   font-family: monospace;
   padding: 20px 0;
 }
@@ -21,6 +21,14 @@ h2 {
 }
 
 table + h2 {
+  position: absolute;
+  top: 0px;
+  width: 90%;
+  background: url('images/header.png') no-repeat left top;
+  padding-top: 135px; 
+}
+
+table img {
   position: absolute;
   top: 0px;
   width: 90%;
@@ -46,10 +54,6 @@ a {
   color : #0062AD;
 }
 
-table {
-  display: none;
-}
-
 ul,ol {
   margin: 0px 10px;
   padding-left: 10px;
@@ -58,4 +62,18 @@ ul,ol {
 ul li em {
   font-weight: bold;
   font-style: normal;
+}
+
+table h3 {
+  display: none;
+}
+
+pre {
+  padding: 20px;
+}
+
+pre h2 {
+  color: #000;
+  position: relative;
+  padding: 20px 10px 0px 0px;
 }
