@@ -24,7 +24,7 @@ table + h2 {
   position: absolute;
   top: 0px;
   width: 90%;
-  background: url('images/header.png') no-repeat left top;
+  background: url('images/header.png') top center no-repeat;
   padding-top: 135px; 
 }
 
@@ -32,7 +32,7 @@ table img {
   position: absolute;
   top: 0px;
   width: 90%;
-  background: url('images/header.png') no-repeat left top;
+  background: url('images/header.png') top center no-repeat;
   padding-top: 135px; 
 }
 

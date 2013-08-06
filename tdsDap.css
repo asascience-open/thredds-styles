@@ -1,10 +1,11 @@
 html 
 {
-    background: url(images/header.png) top left no-repeat;
+    background: url(images/header.png) top center no-repeat;
     background-color: #0069BD;
     font-family: Tahoma, Arial, sans-serif;
     padding-top: 100px;
 }
+
 body
 {
     background-color: #ddd;
@@ -14,11 +15,13 @@ body
     padding: 20px;
     
 }
+
 form
 {
     margin: 0 25px 0 25px;
     width: 825px;
 }
+
 pre
 {
     margin: 20px;
